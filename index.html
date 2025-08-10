@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Visor 3D — Subí tu modelo (Three.js)</title>
+  <style>
+    :root{--bg:#0b0e13;--panel:#121722;--muted:#8fa0b3;--accent:#4cc9f0;--ok:#93e6b8}
+    *{box-sizing:border-box} html,body{height:100%;margin:0}
+    body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";background:var(--bg);color:#e6edf3;display:flex;flex-direction:column}
+    header{padding:12px 16px;background:var(--panel);display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #1c2433}
+    header h1{font-size:16px;margin:0;letter-spacing:.3px;opacity:.9}
+    #viewer{flex:1;position:relative}
+    #canvas{position:absolute;inset:0}
+    .ui{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:8px;z-index:10}
+    .card{background:rgba(18,23,34,.9);border:1px solid #1c2433;border-radius:12px;padding:10px;backdrop-filter:blur(6px);}
+    .row{display:flex;align-items:center;gap:8px}
+    label{font-size:12px;color:var(--muted)}
+    input[type="file"]{display:none}
+    .btn{padding:8px 10px;border-radius:10px;border:1px solid #233047;background:#151b28;color:#e6edf3;cursor:pointer;font-size:12px}
+    .btn:hover{border-color:#2f3f59}
+    .accent{border-color:#2a3a52;outline:1px solid rgba(76,201,240,.25)}
+    .pill{padding:6px 8px;border-radius:100px;background:#101523;border:1px solid #1c2433;color:#bcd}
+    .toggle{display:inline-flex;border:1px solid #1c2433;border-radius:999px;overflow:hidden}
+    .toggle button{padding:6px 10px;background:transparent;color:#bcd;border:none;cursor:pointer;font-size:12px}
+    .toggle button.active{background:#1a2130;color:#fff}
+    #dropzone{position:absolute;inset:0;border:2px dashed #2a3a52;border-radius:14px;display:none;align-items:center;justify-content:center;color:#9fb3c8;background:rgba(16,21,35,.6)}
+    #help{position:absolute;left:12px;bottom:12px;max-width:460px}
+    #help .card{font-size:12px;line-height:1.45}
+    a{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Visor 3D — Subí tu modelo</h1>
+    <label class="btn accent" for="file">Subir modelo (.glb, .gltf, .obj, .stl)</label>
+    <input id="file" type="file" accept=".glb,.gltf,.obj,.stl,.zip,.mtl" />
+    <div class="pill" id="status">Listo ✅</div>
+  </header>
+  <div id="viewer">
+    <div id="canvas"></div>
+    <div id="dropzone">Soltá tu archivo acá</div>
+    <div class="ui">
+      <div class="card" style="min-width:230px">
+        <div class="row" style="justify-content:space-between;gap:12px;margin-bottom:6px">
+          <label>Controles</label>
+          <div class="toggle" id="controlsToggle">
+            <button data-mode="orbit" class="active">Orbitar</button>
+            <button data-mode="pointer">Free look</button>
+          </div>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <label>FOV</label>
+          <input id="fov" type="range" min="30" max="90" value="60" />
+        </div>
+        <div class="row" style="justify-content:space-between;margin-top:6px">
+          <button class="btn" id="reset">Reencuadrar</button>
+          <button class="btn" id="clear">Limpiar escena</button>
+        </div>
+      </div>
+    </div>
+    <div id="help">
+      <div class="card">
+        <b>Cómo usar</b>
+        <ul>
+          <li>Arrastrá y soltá un archivo o usá <i>Subir modelo</i>.</li>
+          <li><b>Orbitar</b>: arrastrá con el mouse, rueda para zoom.</li>
+          <li><b>Free look</b>: clic para bloquear el puntero, mové el mouse y usá <b>WASD</b> + <b>ESPACIO/SHIFT</b>.</li>
+          <li>Soporta: <code>.glb/.gltf</code> (recomendado), <code>.obj</code>, <code>.stl</code>.</li>
+        </ul>
+        <span style="color:var(--muted)">Tip: usá .glb (binario) para mejores texturas y materiales.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js y loaders desde CDN -->
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+    import { OrbitControls } from "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js";
+    import { PointerLockControls } from "https://unpkg.com/three@0.161.0/examples/jsm/controls/PointerLockControls.js";
+    import { GLTFLoader } from "https://unpkg.com/three@0.161.0/examples/jsm/loaders/GLTFLoader.js";
+    import { OBJLoader } from "https://unpkg.com/three@0.161.0/examples/jsm/loaders/OBJLoader.js";
+    import { STLLoader } from "https://unpkg.com/three@0.161.0/examples/jsm/loaders/STLLoader.js";
+
+    // --- Básicos ---
+    const container = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+    const dropzone = document.getElementById('dropzone');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0e13);
+
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
+    camera.position.set(2.5, 1.8, 4.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    // Iluminación
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x334466, 0.7);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(5, 10, 7);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(1024,1024);
+    scene.add(dir);
+
+    // Suelo suave
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(50, 64),
+      new THREE.MeshStandardMaterial({ color: 0x0f1420, metalness: 0, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI/2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Controles
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.enablePan = true;
+
+    const pointer = new PointerLockControls(camera, renderer.domElement);
+    let move = { f:false,b:false,l:false,r:false,up:false,down:false };
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+
+    let activeControl = 'orbit';
+    function useOrbit(){ activeControl='orbit'; pointer.unlock(); }
+    function usePointer(){ activeControl='pointer'; }
+
+    // UI toggle
+    const toggle = document.getElementById('controlsToggle');
+    toggle.addEventListener('click', (e)=>{
+      if(e.target.tagName!=='BUTTON') return;
+      toggle.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      e.target.classList.add('active');
+      const mode = e.target.dataset.mode;
+      if(mode==='orbit') useOrbit(); else usePointer();
+    });
+
+    // Pointer lock interactions
+    renderer.domElement.addEventListener('click', ()=>{
+      if(activeControl==='pointer' && !pointer.isLocked) pointer.lock();
+    });
+
+    document.addEventListener('pointerlockchange', ()=>{
+      if(pointer.isLocked){ status('Free look activo'); }
+      else { status('Orbitar/seleccionar'); }
+    });
+
+    // WASD en free look
+    const onKey = (down)=> (e)=>{
+      switch(e.code){
+        case 'KeyW': move.f = down; break;
+        case 'KeyS': move.b = down; break;
+        case 'KeyA': move.l = down; break;
+        case 'KeyD': move.r = down; break;
+        case 'Space': move.up = down; break;
+        case 'ShiftLeft': move.down = down; break;
+      }
+    };
+    document.addEventListener('keydown', onKey(true));
+    document.addEventListener('keyup', onKey(false));
+
+    // Redimensionar
+    function onResize(){
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      renderer.setSize(w,h,false);
+      camera.aspect = w/h; camera.updateProjectionMatrix();
+    }
+    const ro = new ResizeObserver(onResize); ro.observe(container); onResize();
+
+    // Drag & drop
+    ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev, e=>{ e.preventDefault(); dropzone.style.display='flex'; }));
+    ['dragleave','drop'].forEach(ev=>document.addEventListener(ev, e=>{ e.preventDefault(); dropzone.style.display='none'; }));
+    document.addEventListener('drop', (e)=>{
+      const file = e.dataTransfer.files[0];
+      if(file) loadFile(file);
+    });
+
+    // File input
+    const fileInput = document.getElementById('file');
+    fileInput.addEventListener('change', ()=>{
+      if(fileInput.files[0]) loadFile(fileInput.files[0]);
+    });
+
+    // Controles de UI
+    document.getElementById('fov').addEventListener('input',(e)=>{
+      camera.fov = Number(e.target.value); camera.updateProjectionMatrix();
+    });
+    document.getElementById('reset').addEventListener('click', ()=> frameScene());
+    document.getElementById('clear').addEventListener('click', ()=> clearScene());
+
+    // Gestión del modelo
+    let currentRoot = null;
+    function clearScene(){
+      if(currentRoot){
+        scene.remove(currentRoot);
+        currentRoot.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material){ if(Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material.dispose(); }});
+        currentRoot = null;
+      }
+      status('Escena limpia');
+    }
+
+    function loadFile(file){
+      const url = URL.createObjectURL(file);
+      const name = file.name.toLowerCase();
+      clearScene();
+      status('Cargando ' + file.name + ' …');
+
+      if(name.endsWith('.glb') || name.endsWith('.gltf')){
+        const loader = new GLTFLoader();
+        loader.parseAsync ? loader.parseAsync : null; // hint for some bundlers
+        loader.load(url, (gltf)=>{
+          const root = gltf.scene || gltf.scenes?.[0];
+          afterLoad(root);
+        }, undefined, onError);
+      } else if(name.endsWith('.obj')){
+        const loader = new OBJLoader();
+        loader.load(url, (obj)=> afterLoad(obj), undefined, onError);
+      } else if(name.endsWith('.stl')){
+        const loader = new STLLoader();
+        loader.load(url, (geo)=>{
+          const mat = new THREE.MeshStandardMaterial({ color: 0xb0c4de, metalness: 0.1, roughness: 0.8 });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.castShadow = true; mesh.receiveShadow = true;
+          afterLoad(mesh);
+        }, undefined, onError);
+      } else {
+        status('Formato no soportado');
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function afterLoad(root){
+      currentRoot = new THREE.Group();
+      currentRoot.add(root);
+      scene.add(currentRoot);
+
+      // Sombreado y sombras
+      currentRoot.traverse((o)=>{
+        if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; if(o.material) { o.material.side = THREE.FrontSide; }}
+      });
+
+      frameScene();
+      status('Modelo cargado ✅');
+    }
+
+    function frameScene(){
+      const box = new THREE.Box3().setFromObject(currentRoot || scene);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const fitDist = maxDim / (2 * Math.tan((camera.fov * Math.PI / 180) / 2));
+      const dist = fitDist * 1.4;
+
+      camera.position.copy(center).add(new THREE.Vector3(dist, dist*0.6, dist));
+      camera.near = Math.max(0.01, maxDim/1000);
+      camera.far = Math.max(2000, maxDim*10);
+      camera.updateProjectionMatrix();
+
+      orbit.target.copy(center);
+      orbit.update();
+    }
+
+    function onError(err){
+      console.error(err);
+      status('Error cargando el modelo');
+    }
+
+    function status(msg){ statusEl.textContent = msg; }
+
+    // Animación
+    const clock = new THREE.Clock();
+    function animate(){
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+
+      if(activeControl==='orbit'){
+        orbit.update();
+      } else {
+        const speed = 3.5; // m/s
+        // movimiento WASD
+        direction.set(0,0,0);
+        if(move.f) direction.z -= 1;
+        if(move.b) direction.z += 1;
+        if(move.l) direction.x -= 1;
+        if(move.r) direction.x += 1;
+        if(move.up) direction.y += 1;
+        if(move.down) direction.y -= 1;
+        direction.normalize();
+
+        // transformar respecto a la orientación de la cámara
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0; forward.normalize();
+        const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).negate();
+
+        const moveVec = new THREE.Vector3();
+        moveVec.addScaledVector(forward, direction.z);
+        moveVec.addScaledVector(right, direction.x);
+        moveVec.y += direction.y;
+        moveVec.normalize().multiplyScalar(speed * dt);
+        camera.position.add(moveVec);
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
