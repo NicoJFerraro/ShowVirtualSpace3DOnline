@@ -1,148 +1,27 @@
-<!doctype html>
-<html lang="es">
+<!-- =============== index.html =============== -->
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Viewer Three.js — Mi modelo</title>
+    <title>Three.js Model Viewer</title>
+    <link rel="icon" href="data:," />
     <style>
       html, body { height: 100%; margin: 0; overflow: hidden; background: #0e0f12; }
-      #loading {
-        position: fixed; inset: 0; display: grid; place-items: center;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-        color: #cbd5e1; background: radial-gradient( circle at 50% 40%, #111318 0%, #0b0c10 60% );
-        letter-spacing: 0.2px;
-      }
-      #loading .box { padding: 16px 20px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); }
-      #loading .bar { width: 320px; height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; margin-top: 10px; }
-      #loading .bar > span { display: block; height: 100%; width: 0%; background: #8ab4ff; border-radius: inherit; transition: width 0.2s ease; }
-      #error { position: fixed; bottom: 10px; left: 10px; right: 10px; color: #fda4af; font-size: 14px; display: none; }
       canvas { display: block; }
     </style>
+
+    <!-- Import map to allow clean module imports in index.js -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+          "jsm/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
   </head>
   <body>
-    <div id="loading" role="status" aria-live="polite">
-      <div class="box">
-        <div>⏳ Cargando modelo… <strong id="pct">0%</strong></div>
-        <div class="bar"><span id="bar"></span></div>
-        <div id="detail" style="opacity:.8;font-size:12px;margin-top:6px">Esperá un momento…</div>
-      </div>
-    </div>
-    <div id="error"></div>
-
-    <script type="module">
-      // Importes desde CDN (funciona en GitHub Pages)
-      import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
-      import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
-      import { GLTFLoader } from 'https://unpkg.com/three@0.161.0/examples/jsm/loaders/GLTFLoader.js';
-      import { DRACOLoader } from 'https://unpkg.com/three@0.161.0/examples/jsm/loaders/DRACOLoader.js';
-
-      // ===== Render =====
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      document.body.appendChild(renderer.domElement);
-
-      // ===== Escena y cámara =====
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0e0f12);
-
-      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
-      camera.position.set(3, 2, 4);
-
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.minDistance = 0.1;
-      controls.maxDistance = 100;
-
-      // ===== Luces =====
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x303030, 1.1);
-      hemi.position.set(0, 20, 0);
-      scene.add(hemi);
-
-      const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-      dir.position.set(5, 8, 5);
-      scene.add(dir);
-
-      // ===== Carga del modelo =====
-      const loadingEl = document.getElementById('loading');
-      const pctEl = document.getElementById('pct');
-      const barEl = document.getElementById('bar');
-      const detailEl = document.getElementById('detail');
-      const errorEl = document.getElementById('error');
-
-      const manager = new THREE.LoadingManager();
-      manager.onStart = () => (detailEl.textContent = 'Descargando archivos…');
-      manager.onProgress = (url, loaded, total) => {
-        const p = Math.round((loaded / total) * 100);
-        pctEl.textContent = p + '%';
-        barEl.style.width = p + '%';
-      };
-      manager.onLoad = () => (loadingEl.style.display = 'none');
-
-      const loader = new GLTFLoader(manager);
-      // Si tu .glb/.gltf está comprimido con Draco, descomentá estas 3 líneas:
-      // const draco = new DRACOLoader(manager);
-      // draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-      // loader.setDRACOLoader(draco);
-
-      // Cambiá esta ruta al archivo real en tu repo
-      const MODEL_URL = './assets/model.glb';
-
-      loader.load(
-        MODEL_URL,
-        (gltf) => {
-          const model = gltf.scene;
-          scene.add(model);
-
-          // Centramos y ajustamos la cámara al modelo
-          const box = new THREE.Box3().setFromObject(model);
-          const size = box.getSize(new THREE.Vector3());
-          const center = box.getCenter(new THREE.Vector3());
-
-          // Mover el modelo para que su centro quede en el origen
-          model.position.sub(center);
-
-          // Ajustar cámara para encuadrar el modelo
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const fov = camera.fov * (Math.PI / 180);
-          let camDist = (maxDim / 2) / Math.tan(fov / 2);
-          camDist *= 1.4; // margen
-          camera.position.set(camDist, camDist * 0.6, camDist);
-
-          controls.target.set(0, 0, 0);
-          controls.update();
-        },
-        (xhr) => {
-          if (xhr.total) {
-            const p = Math.round((xhr.loaded / xhr.total) * 100);
-            pctEl.textContent = p + '%';
-            barEl.style.width = p + '%';
-          } else {
-            detailEl.textContent = 'Cargando…';
-          }
-        },
-        (err) => {
-          loadingEl.style.display = 'none';
-          errorEl.style.display = 'block';
-          errorEl.textContent = 'Error cargando el modelo: ' + (err?.message || err);
-          console.error(err);
-        }
-      );
-
-      // ===== Resize =====
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
-
-      // ===== Loop =====
-      (function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-      })();
-    </script>
+    <script type="module" src="./index.js"></script>
   </body>
 </html>
