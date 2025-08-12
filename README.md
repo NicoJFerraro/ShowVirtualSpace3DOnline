@@ -1,1 +1,1 @@
-# getting-started-with-threejs
+# 3D models visualizer
